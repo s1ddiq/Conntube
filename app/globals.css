@@ -133,18 +133,10 @@
   }
 }
 
-/* change 1 change 2 */
+/* change 1 change 2  change 3 change 4   change 5! change-6*/
 
 button:not(:disabled) {
 cursor: pointer;
-}
-
-/* app/globals.css - Add these styles */
-html, body {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
 }
 
 * {
@@ -157,7 +149,7 @@ html, body {
   scrollbar-width: thin;
 }
 
-/* Hide scrollbar for Chrome/Safari while keeping functionality */
+/* Hide scrollbar for Chrome/Safari while keeping functionality 1 */
 .overflow-y-auto::-webkit-scrollbar {
   width: 6px;
 }

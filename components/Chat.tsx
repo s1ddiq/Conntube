@@ -1,4 +1,4 @@
-// components/Chat.tsx
+// components/Chat.tsx - Updated with proper scrolling
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -28,9 +28,11 @@ export default function Chat({ roomCode }: ChatProps) {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const prevMessagesLengthRef = useRef(0);
+  const shouldAutoScrollRef = useRef(true);
   const { user, isLoaded } = useUser();
 
-  // Get user's display name properly from Clerk
   const getUserName = () => {
     if (!isLoaded || !user) return "Guest";
     return (
@@ -42,13 +44,22 @@ export default function Chat({ roomCode }: ChatProps) {
     );
   };
 
-  // Fetch messages
   const fetchMessages = async () => {
     try {
       const res = await fetch(`/api/rooms/${roomCode}/messages`);
       if (res.ok) {
         const data = await res.json();
+
+        const hasNewMessages = data.length > prevMessagesLengthRef.current;
+        prevMessagesLengthRef.current = data.length;
+
         setMessages(data);
+
+        if (hasNewMessages && shouldAutoScrollRef.current) {
+          setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+          }, 100);
+        }
       }
     } catch (error) {
       console.error("Error fetching messages:", error);
@@ -57,7 +68,23 @@ export default function Chat({ roomCode }: ChatProps) {
     }
   };
 
-  // Send message
+  // Detect if user scrolled up manually
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } =
+      scrollContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    shouldAutoScrollRef.current = isAtBottom;
+  };
+
+  // Scroll to bottom on initial load
+  useEffect(() => {
+    if (!loading && messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    }
+  }, [loading]);
+
   const sendMessage = async () => {
     if (!newMessage.trim() || sending) return;
 
@@ -78,10 +105,10 @@ export default function Chat({ roomCode }: ChatProps) {
 
       if (res.ok) {
         setNewMessage("");
-        fetchMessages();
+        shouldAutoScrollRef.current = true;
+        await fetchMessages();
         toast.success("Message sent!");
       } else {
-        console.error("Error response:", data);
         toast.error(data.error || "Failed to send message");
       }
     } catch (error) {
@@ -92,12 +119,6 @@ export default function Chat({ roomCode }: ChatProps) {
     }
   };
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // Initial fetch and polling
   useEffect(() => {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
@@ -141,8 +162,14 @@ export default function Chat({ roomCode }: ChatProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto space-y-3 mb-4">
+    <div className="flex flex-col h-full min-h-[300px]">
+      {/* Scrollable messages container */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto space-y-3 min-h-0 h-full mb-4 pr-1"
+        onScroll={handleScroll}
+        style={{ maxHeight: "calc(100% - 60px)" }}
+      >
         {messages.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
             No messages yet. Start the conversation! 💬
@@ -183,7 +210,8 @@ export default function Chat({ roomCode }: ChatProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="flex gap-2 mt-4">
+      {/* Input stays at bottom */}
+      <div className="flex gap-2 mt-4 shrink-0">
         <Input
           type="text"
           value={newMessage}

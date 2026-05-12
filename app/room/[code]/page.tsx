@@ -1,7 +1,7 @@
 // app/room/[code]/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import {
@@ -51,7 +51,24 @@ export default function RoomPage() {
   const [changingUrl, setChangingUrl] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSyncingManually, setIsSyncingManually] = useState(false);
+  const scrollRef = useRef<number>(0);
 
+  useEffect(() => {
+    const onScroll = () => {
+      scrollRef.current = window.scrollY;
+    };
+
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      window.scrollTo(0, scrollRef.current);
+    }, 0);
+
+    return () => clearTimeout(timeout);
+  }, [room, isPlaying, currentTime]);
   const extractVideoInfo = (url: string) => {
     if (url.includes("youtube.com/watch?v=")) {
       const videoId = url.split("v=")[1]?.split("&")[0];
@@ -75,7 +92,16 @@ export default function RoomPage() {
       const res = await fetch(`/api/rooms/${code}`);
       if (res.ok) {
         const data = await res.json();
-        setRoom(data);
+        setRoom((prev) => {
+          if (!prev) return data;
+
+          return {
+            ...prev,
+            isPlaying: data.isPlaying,
+            videoTime: data.videoTime,
+          };
+        });
+
         setIsPlaying(data.isPlaying);
         setCurrentTime(data.videoTime || 0);
       } else {
@@ -109,7 +135,7 @@ export default function RoomPage() {
               setIsPlaying(data.isPlaying);
             }
             const timeDiff = Math.abs(data.videoTime - currentTime);
-            if (timeDiff > 2 && data.videoTime > 0) {
+            if (timeDiff > 0.1 && data.videoTime > 0) {
               setCurrentTime(data.videoTime);
             }
           }
@@ -154,6 +180,8 @@ export default function RoomPage() {
         setRoom(data);
         setIsPlaying(data.isPlaying);
         setCurrentTime(data.videoTime || 0);
+        router.refresh(); // Force re-render to sync video player
+        // window.location.reload(); // Force full page reload to ensure everything is in sync
         toast.success("Synced with host!");
         console.log("Manual sync completed:", {
           isPlaying: data.isPlaying,
@@ -277,24 +305,26 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="h-full overflow-hidden bg-cover">
+    <div className="h-full relative overflow-hidden">
+      {/* BACKGROUND */}
       <Image
         src="/poster1.jpg"
         alt="Background"
         fill
-        className="object-cover object-center -z-1"
+        className="object-cover object-center -z-10"
         priority
       />
-      <div className="z-1 absolute top-0 left-0 bg-black/80 w-full h-full"></div>
+      <div className="absolute inset-0 bg-black/80 z-0" />
 
-      {/* Responsive Layout - Stack on mobile, side by side on desktop */}
-      <div className="flex flex-col lg:flex-row h-full relative z-2 overflow-y-auto lg:overflow-hidden">
-        {/* Video Section - Takes full width on mobile, flexible on desktop */}
-        <div className="flex-1 flex flex-col p-3 sm:p-4 overflow-hidden">
-          {/* Video Player Container */}
-          <div className="relative w-full">
+      {/* MAIN WRAPPER */}
+      <div className="relative z-10 h-full flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+        {/* ================= LEFT / VIDEO ================= */}
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* VIDEO */}
+          <div className="p-2 sm:p-3 lg:p-4 shrink-0">
             <div
-              className={`${!room?.isHost && "pointer-events-none"} bg-black rounded-xl overflow-hidden shadow-2xl aspect-video`}
+              className="aspect-video bg-black rounded-xl shadow-2xl overflow-hidden"
+              style={{ pointerEvents: room.isHost ? "auto" : "none" }}
             >
               <YouTubePlayer
                 videoId={room.videoId}
@@ -303,195 +333,136 @@ export default function RoomPage() {
                 onStateChange={handleStateChange}
               />
             </div>
-
-            {/* Host badge overlay on mobile */}
-            {room?.isHost && (
-              <div className="absolute top-2 right-2 lg:hidden">
-                <span className="flex items-center gap-1 text-xs bg-yellow-500/90 text-yellow-500 px-2 py-1 rounded-full backdrop-blur-sm">
-                  <Crown className="w-3 h-3" />
-                  Host
-                </span>
-              </div>
-            )}
           </div>
 
-          {/* Room Info Bar - Responsive */}
-          <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-card rounded-lg p-3">
-            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-              <h2 className="font-bold text-lg sm:text-xl md:text-2xl text-foreground truncate max-w-[200px] sm:max-w-none">
-                {room.roomName}
-              </h2>
-              <p
-                onClick={() => copyRoomLink()}
-                className="text-xs text-accent cursor-pointer hover:text-accent/50 shrink-0"
-              >
-                Code: {room.roomCode} 📋
-              </p>
-              {room?.isHost && (
-                <span className="hidden lg:flex items-center gap-1 text-xs bg-yellow-500/20 text-yellow-500 px-2 py-1 rounded-full">
-                  <Crown className="w-3 h-3" />
-                  Host
-                </span>
-              )}
-            </div>
-
-            {/* Action Buttons - Responsive grid */}
-            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              {room?.isHost && (
-                <Button
-                  onClick={() => setShowUrlInput(!showUrlInput)}
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 sm:flex-none"
-                >
-                  {showUrlInput ? (
-                    <X className="w-4 h-4" />
-                  ) : (
-                    <Edit2 className="w-4 h-4" />
-                  )}
-                  <span className="ml-2 hidden sm:inline">
-                    {showUrlInput ? "Cancel" : "Change Video"}
-                  </span>
-                </Button>
-              )}
-
-              <Button
-                onClick={manualSync}
-                variant="outline"
-                size="sm"
-                disabled={isSyncingManually}
-                className="flex-1 sm:flex-none"
-              >
-                <RefreshCw
-                  className={`w-4 h-4 ${isSyncingManually ? "animate-spin" : ""}`}
-                />
-                <span className="ml-2 hidden sm:inline">
-                  {isSyncingManually ? "Syncing..." : "Sync"}
-                </span>
-              </Button>
-
-              <Button
-                onClick={copyRoomLink}
-                variant="outline"
-                size="sm"
-                className="flex-1 sm:flex-none"
-              >
-                {copied ? (
-                  <Check className="w-4 h-4" />
-                ) : (
-                  <Copy className="w-4 h-4" />
-                )}
-                <span className="ml-2 hidden sm:inline">
-                  {copied ? "Copied!" : "Invite"}
-                </span>
-              </Button>
-            </div>
-          </div>
-
-          {/* Change Video URL Input */}
-          {showUrlInput && room?.isHost && (
-            <div className="mt-3 bg-card rounded-lg p-3">
-              <p className="text-sm text-muted-foreground mb-2">
-                Paste new YouTube or Google Drive URL:
-              </p>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Input
-                  type="text"
-                  value={newVideoUrl}
-                  onChange={(e) => setNewVideoUrl(e.target.value)}
-                  placeholder="https://youtube.com/watch?v=..."
-                  className="flex-1"
-                  disabled={changingUrl}
-                />
-                <Button
-                  onClick={changeVideoUrl}
-                  disabled={changingUrl || !newVideoUrl.trim()}
-                  className="w-full sm:w-auto"
-                >
-                  {changingUrl ? "Changing..." : "Change"}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Video URL - Hide on mobile to save space */}
-          <p className="text-xs text-muted-foreground mt-2 truncate hidden sm:block">
-            {room.currentVideoUrl}
-          </p>
+          {/* URL INPUT */}
         </div>
 
-        {/* Right Sidebar - Full width on mobile, fixed width on desktop */}
-        <div className="w-full lg:w-96 flex flex-col border-t lg:border-t-0 lg:border-l border-border overflow-hidden mt-4 lg:mt-0">
-          {/* Chat Section */}
-          <div className="flex-1 overflow-hidden flex flex-col p-3 sm:p-4 min-h-[300px] lg:min-h-0">
-            <h3 className="font-semibold text-white mb-3">Family Chat</h3>
-            <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card p-2">
+        {/* ================= RIGHT / SIDEBAR ================= */}
+        <div className="w-full lg:w-96 flex flex-col border-t lg:border-t-0 lg:border-l border-border bg-background backdrop-blur-md lg:h-full">
+          {/* ROOM INFO (always visible) */}
+          <div className="p-3 lg:p-4 border-b border-border shrink-0">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="font-bold truncate">{room.roomName}</h2>
+
+              <p
+                onClick={copyRoomLink}
+                className="text-xs text-accent cursor-pointer"
+              >
+                {room.roomCode} 📋
+              </p>
+            </div>
+          </div>
+
+          {/* CHAT (THIS is the only scroll area) */}
+          {/* In your room page - the chain from parent to child must have height constraints */}
+          <div className="flex-1 flex flex-col p-3 sm:p-4 h-full justify-end gap-6">
+            <div className="">
+              {room.isHost ? (
+                <div className="flex items-center gap-2 mb-2">
+                  <Crown className="w-4 h-4" />
+                  <span className="text-sm font-medium">You are the host</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mb-2">
+                  <Edit2 className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    You are a viewer. Enjoy the show! 🍿
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-4 justify-center flex-wrap">
+              {room.isHost && (
+                <>
+                  <Button
+                    onClick={() => setShowUrlInput((prev) => !prev)}
+                    variant="outline"
+                  >
+                    <Edit2 className="w-4 h-4 mr-2" />
+                    Change Video URL
+                  </Button>
+                  {showUrlInput && room?.isHost && (
+                    <div className="px-3 pb-3 lg:px-4 lg:pb-4 shrink-0">
+                      <div className="bg-card rounded-lg p-3 space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          Paste new YouTube or Google Drive URL:
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Input
+                            value={newVideoUrl}
+                            onChange={(e) => setNewVideoUrl(e.target.value)}
+                            placeholder="https://youtube.com/watch?v=..."
+                            disabled={changingUrl}
+                          />
+                          <Button
+                            onClick={changeVideoUrl}
+                            disabled={changingUrl || !newVideoUrl.trim()}
+                          >
+                            {changingUrl ? "Changing..." : "Change"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}{" "}
+              <Button onClick={manualSync} variant="outline">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Sync
+              </Button>
+              <div className="flex gap-2 mt-3">
+                <Button onClick={copyRoomLink} variant="outline" size="sm">
+                  {copied ? (
+                    <Check className="w-4 h-4" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                  Copy Room Link
+                </Button>
+              </div>
+            </div>
+            {/* min-h-0 is key */}
+            <h3 className="font-semibold text-foreground mb-3 shrink-0">
+              Family Chat 💬
+            </h3>
+            <div className="flex-1 overflow-y-auto border border-border rounded-lg bg-card p-2 max-h-[500px]">
               <Chat roomCode={room.roomCode} />
             </div>
           </div>
-
-          {/* Video Controls */}
-          <div className="border-t border-border p-4 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <h3 className="font-semibold text-white">Video Controls</h3>
-              {!room?.isHost && (
-                <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                  Host Only
-                </span>
-              )}
-            </div>
-
-            <p className="text-xs text-muted-foreground hidden sm:block">
-              {room?.isHost
-                ? "You are the host. Control the video for everyone."
-                : "Only the host can control the video. Sit back and enjoy!"}
-            </p>
-
-            {/* Control Buttons - Responsive grid */}
+          {/* CONTROLS */}
+          <div className="border-t border-border p-3 lg:p-4 shrink-0">
             <div className="grid grid-cols-3 gap-2">
               <Button
                 onClick={() => handleSeek(-10)}
-                variant="outline"
                 disabled={!room?.isHost}
-                className="w-full"
+                variant="outline"
               >
-                <RotateCcw className="w-4 h-4 sm:mr-1" />
-                <span className="hidden sm:inline">-10s</span>
+                <RotateCcw className="w-4 h-4" />
               </Button>
 
-              <Button
-                onClick={handlePlayPause}
-                disabled={!room?.isHost}
-                className="w-full"
-              >
+              <Button onClick={handlePlayPause} disabled={!room?.isHost}>
                 {isPlaying ? (
                   <Pause className="w-4 h-4" />
                 ) : (
-                  <Play className="w-4 h-4 ml-0.5" />
+                  <Play className="w-4 h-4" />
                 )}
-                <span className="hidden sm:inline ml-2">
-                  {isPlaying ? "Pause" : "Play"}
-                </span>
               </Button>
 
               <Button
                 onClick={() => handleSeek(10)}
-                variant="outline"
                 disabled={!room?.isHost}
-                className="w-full"
+                variant="outline"
               >
-                <span className="hidden sm:inline mr-1">+10s</span>
                 <RotateCcw className="w-4 h-4 rotate-180" />
               </Button>
             </div>
 
-            {/* Time Display */}
-            <div className="text-center">
-              <p className="text-xs text-muted-foreground font-mono">
-                {Math.floor(currentTime / 60)}:
-                {(currentTime % 60).toString().padStart(2, "0")}
-              </p>
-            </div>
+            <p className="text-xs text-center mt-2 text-muted-foreground font-mono">
+              {Math.floor(currentTime / 60)}:
+              {(currentTime % 60).toString().padStart(2, "0")}
+            </p>
           </div>
         </div>
       </div>

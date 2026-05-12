@@ -48,9 +48,9 @@ export default function RootLayout({
             disableTransitionOnChange
             storageKey="conntube-theme"
           >
-            <div className="flex flex-col h-full">
+            <div className="flex flex-1 flex-col h-full">
               <SiteHeader />
-              <main className="flex-1 overflow-hidden">{children}</main>
+              <main>{children}</main>
             </div>
             <Toaster />
           </ThemeProvider>
