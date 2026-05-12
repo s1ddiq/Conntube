@@ -322,10 +322,7 @@ export default function RoomPage() {
         <div className="flex-1 flex flex-col min-h-0">
           {/* VIDEO */}
           <div className="p-2 sm:p-3 lg:p-4 shrink-0">
-            <div
-              className="aspect-video bg-black rounded-xl shadow-2xl overflow-hidden"
-              style={{ pointerEvents: room.isHost ? "auto" : "none" }}
-            >
+            <div className="aspect-video bg-black rounded-xl shadow-2xl overflow-hidden">
               <YouTubePlayer
                 videoId={room.videoId}
                 isPlaying={isPlaying}
