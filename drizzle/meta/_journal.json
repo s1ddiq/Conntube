@@ -15,6 +15,13 @@
       "when": 1778576671998,
       "tag": "0001_steep_clea",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784239844692,
+      "tag": "0002_curly_silver_centurion",
+      "breakpoints": true
     }
   ]
 }
